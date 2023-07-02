@@ -1,5 +1,6 @@
+import { Question } from "../types.ts";
 import { AbstractDBDriver, ConnectionConfig } from "./DBDriver.ts";
-import { MongoClient, MongoClientOptions, MongoServerError, ServerApiVersion } from 'npm:mongodb';
+import { Collection, Db, InsertOneResult, MongoClient, MongoClientOptions, MongoServerError, ServerApiVersion } from 'npm:mongodb';
 
 export interface MongoConnectionConfig extends ConnectionConfig {
     connectionURI: string
@@ -7,6 +8,7 @@ export interface MongoConnectionConfig extends ConnectionConfig {
 
 export class MongoDriver extends AbstractDBDriver<MongoConnectionConfig> {
     private client: MongoClient
+    private db: Db | undefined = undefined
 
     async connect() {
         console.log("Connecting... ")
@@ -20,6 +22,7 @@ export class MongoDriver extends AbstractDBDriver<MongoConnectionConfig> {
         })
         if (this.connected) {
             console.log("Successfully connected to MongoDB!")
+            this.db = this.client.db()
         }
 
         return Promise.resolve(this.connected)
@@ -27,6 +30,46 @@ export class MongoDriver extends AbstractDBDriver<MongoConnectionConfig> {
 
     disconnect() {
         throw new Error("Method not implemented.")
+    }
+    
+
+    private questionsCollection(): Collection | undefined { return this.db?.collection('quizcreator') }
+    async questionExists(questionId: string): Promise<boolean> {
+        const question: Question | null = await this.getQuestionById(questionId);
+        return Promise.resolve(question != null)
+    }
+
+    async getQuestionById(questionId: string): Promise<Question | null> {
+        const question = await this.questionsCollection()?.findOne({id: questionId} as Question)
+            .then(doc => {
+                if (!doc) {
+                    return null
+                }
+
+                return doc
+            })
+        
+        return Promise.resolve(question as Question | null)
+    }
+
+    async getAllQuestions(): Promise<Question[]> {
+        const foundQuestions = await this.questionsCollection()?.find({}).toArray()
+        if (foundQuestions == null || foundQuestions == undefined) {
+            return Promise.resolve([])
+        }
+        
+        const questions: Question[] = []
+        for (const question of foundQuestions) {
+            if (question != null && question != undefined) {
+                questions.push(question as unknown as Question)
+            }
+        }
+
+        return Promise.resolve(questions)
+    }
+
+    async createQuestion(question: Question): Promise<InsertOneResult | undefined> {
+        return Promise.resolve(await this.questionsCollection()?.insertOne(question))
     }
     
     constructor(connectionConfig: MongoConnectionConfig) {

@@ -5,6 +5,7 @@ import { Number } from 'https://deno.land/x/cliffy@v0.25.7/prompt/number.ts';
 import { Confirm } from 'https://deno.land/x/cliffy@v0.25.7/prompt/confirm.ts';
 import { AbstractDBDriver, ConnectionConfig } from './drivers/DBDriver.ts';
 import { MongoDriver, MongoConnectionConfig, validateMongoConnectionURI } from './drivers/MongoDriver.ts'
+import { Question, QuestionType } from "./types.ts";
 
 const formatErrorString = (error: string) => colors.red("ERROR: " + error)
 const unimplementedError = () => console.log(formatErrorString("This option is currently not implemented."))
@@ -18,25 +19,15 @@ enum QuestionEditorPromptOption {
     Finish = "Finish"
 }
 
-enum QuestionType {
-    MULTIPLE_CHOICE = "Multiple Choice",
-    NUMERIC = "Numeric",
-    STRING = "String (Text)"
+const generateQuestionID = (): string => {
+    let id: string = uuid.v1.generate() as string
+    // if (db?.questionExists(id)) { // TODO: consider removing in the future, might speed up might not
+    //     id = generateQuestionID()
+    // }
+
+    return id
 }
-
-interface Question {
-    id: string
-    type?: QuestionType
-    questionString?: string
-    tags?: string[]
-    choices: string[]
-    answer?: string | number
-}
-
-
-
-const generateQuestionID = () => { return uuid.v1.generate() }
-const isQuestionSignleChoice = (question: Question) => { return question.type == QuestionType.NUMERIC || question.type == QuestionType.STRING }
+const isQuestionSingleChoice = (question: Question) => { return question.type == QuestionType.NUMERIC || question.type == QuestionType.STRING }
 function MK_BLANK_QUESTION(): Question {
     return {
         id: generateQuestionID(),
@@ -51,7 +42,7 @@ function printQuestion(question: Question) {
         choicesString += `\n\t\t- ${choice}`
     }
 
-    const answerString = isQuestionSignleChoice(question) && question.answer != undefined ? `\n${spacing}` + question.answer : ''
+    const answerString = isQuestionSingleChoice(question) && question.answer != undefined ? `\n${spacing}` + question.answer : ''
 
     console.log(`
         UUID: ${question.id}
@@ -143,6 +134,7 @@ enum RootPromptOption {
     CreateQuestion = "Create a question",
     Connect = "Connect to a data source",
     Disconnect = "Disconnect from the data source",
+    Test = "Test",
     Exit = "Exit"
 }
 
@@ -155,11 +147,11 @@ enum DataSource {
 let db: AbstractDBDriver<ConnectionConfig> | undefined = undefined;
 const isConnected = () => { return db != undefined && db != null && db.connected }
 
-// deno-lint-ignore no-unused-labels
 rootOptionLoop: while (true) {
     const chosenRootOption = await Select.prompt({
         message: "What would you like to do?",
         options: [
+            RootPromptOption.Test,
             ...(isConnected() ? [RootPromptOption.CreateQuiz, // Only show these while isConnected
                              RootPromptOption.CreateQuestion,
                              RootPromptOption.Disconnect] : []),
@@ -167,9 +159,17 @@ rootOptionLoop: while (true) {
                              RootPromptOption.Exit] : [])
         ]
     })
-    
-    if (chosenRootOption == RootPromptOption.CreateQuestion) {
-        await questionCreator()
+
+    if (chosenRootOption == RootPromptOption.Test) {
+        if (db == null || db == undefined) {
+            continue rootOptionLoop
+        }
+
+        const questions: Question[] = await db?.getAllQuestions()
+        console.log(questions)
+    } else if (chosenRootOption == RootPromptOption.CreateQuestion) {
+        const question: Question = await questionCreator()
+        await db?.createQuestion(question)
     } else if (chosenRootOption == RootPromptOption.Connect) {
         const chosenDataSource = await Select.prompt({
             message: "Choose a data source to connect to",
@@ -187,6 +187,10 @@ rootOptionLoop: while (true) {
             await db.connect()
         } else {
             unimplementedError()
+        }
+    } else if (chosenRootOption == RootPromptOption.Disconnect) {
+        if (isConnected()) {
+            db?.disconnect()
         }
     } else if (chosenRootOption == RootPromptOption.Exit) {
         if (isConnected()) {
