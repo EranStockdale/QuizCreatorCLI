@@ -7,7 +7,6 @@ export abstract class AbstractDBDriver<TConnectionConfig> {
 
     abstract connect(): Promise<boolean>
     abstract disconnect(): void
-    abstract testConnection(): boolean
 
     protected constructor(connectionConfig: TConnectionConfig) {
         this.connected = false

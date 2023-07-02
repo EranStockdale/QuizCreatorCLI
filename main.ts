@@ -61,6 +61,7 @@ function printQuestion(question: Question) {
     `)
 }
 
+// deno-lint-ignore no-inferrable-types no-unused-vars
 async function questionEditor(question: Question, write: boolean = true): Promise<Question> {
     /**
      * @param {Question} question - The question you wish to edit
