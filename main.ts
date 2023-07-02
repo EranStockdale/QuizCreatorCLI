@@ -20,7 +20,7 @@ enum QuestionEditorPromptOption {
 }
 
 const generateQuestionID = (): string => {
-    let id: string = uuid.v1.generate() as string
+    const id: string = uuid.v1.generate() as string
     // if (db?.questionExists(id)) { // TODO: consider removing in the future, might speed up might not
     //     id = generateQuestionID()
     // }
