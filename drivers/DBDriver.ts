@@ -1,9 +1,13 @@
+// deno-lint-ignore no-empty-interface
+export interface ConnectionConfig {}
+
 export abstract class AbstractDBDriver<TConnectionConfig> {
-    protected connected: boolean
+    public connected: boolean
     protected connectionConfig: TConnectionConfig
 
-    abstract connect(): void
+    abstract connect(): Promise<boolean>
     abstract disconnect(): void
+    abstract testConnection(): boolean
 
     protected constructor(connectionConfig: TConnectionConfig) {
         this.connected = false

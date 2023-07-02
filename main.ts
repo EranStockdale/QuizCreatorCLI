@@ -3,11 +3,11 @@ import * as uuid from "https://deno.land/std@0.192.0/uuid/mod.ts";
 import { colors } from "https://deno.land/x/cliffy@v0.25.7/ansi/colors.ts";
 import { Number } from 'https://deno.land/x/cliffy@v0.25.7/prompt/number.ts';
 import { Confirm } from 'https://deno.land/x/cliffy@v0.25.7/prompt/confirm.ts';
+import { AbstractDBDriver, ConnectionConfig } from './drivers/DBDriver.ts';
+import { MongoDriver, MongoConnectionConfig, validateMongoConnectionURI } from './drivers/MongoDriver.ts'
 
-enum RootPromptOption {
-    CreateQuiz = "Create a quiz",
-    CreateQuestion = "Create a question"
-}
+const formatErrorString = (error: string) => colors.red("ERROR: " + error)
+const unimplementedError = () => console.log(formatErrorString("This option is currently not implemented."))
 
 enum QuestionEditorPromptOption {
     EditType = "Edit the question type",
@@ -45,7 +45,7 @@ function MK_BLANK_QUESTION(): Question {
     } as Question
 }
 function printQuestion(question: Question) {
-    let spacing = '        '
+    const spacing = '        '
     let choicesString = question.type == QuestionType.MULTIPLE_CHOICE ? `\n${spacing}Choices: ` : ""
     for (const choice of question.choices) {
         choicesString += `\n\t\t- ${choice}`
@@ -137,14 +137,63 @@ async function questionCreator() {
     return question
 }
 
+enum RootPromptOption {
+    CreateQuiz = "Create a quiz",
+    CreateQuestion = "Create a question",
+    Connect = "Connect to a data source",
+    Disconnect = "Disconnect from the data source",
+    Exit = "Exit"
+}
 
-const chosenRootOption = await Select.prompt({
-    message: "What would you like to do?",
-    options: [RootPromptOption.CreateQuiz, RootPromptOption.CreateQuestion]
-})
+enum DataSource {
+    MongoDB = "MongoDB",
+    MySQL = "MySQL"
+}
 
-switch (chosenRootOption) {
-    case RootPromptOption.CreateQuestion:
+
+let db: AbstractDBDriver<ConnectionConfig> | undefined = undefined;
+const isConnected = () => { return db != undefined && db != null && db.connected }
+
+// deno-lint-ignore no-unused-labels
+rootOptionLoop: while (true) {
+    const chosenRootOption = await Select.prompt({
+        message: "What would you like to do?",
+        options: [
+            ...(isConnected() ? [RootPromptOption.CreateQuiz, // Only show these while isConnected
+                             RootPromptOption.CreateQuestion,
+                             RootPromptOption.Disconnect] : []),
+            ...(!isConnected() ? [RootPromptOption.Connect, // Only show these while disconnected
+                             RootPromptOption.Exit] : [])
+        ]
+    })
+    
+    if (chosenRootOption == RootPromptOption.CreateQuestion) {
         await questionCreator()
-        break
+    } else if (chosenRootOption == RootPromptOption.Connect) {
+        const chosenDataSource = await Select.prompt({
+            message: "Choose a data source to connect to",
+            options: Object.values(DataSource)
+        })
+        
+        if (chosenDataSource == DataSource.MongoDB) {
+            const connectionString = await Input.prompt("Please enter the connection URI: ")
+            if (!validateMongoConnectionURI(connectionString)) {
+                console.log(formatErrorString("Invalid connection URI"))
+                continue
+            }
+            const connectionConfig = { connectionURI: connectionString } as MongoConnectionConfig
+            db = new MongoDriver(connectionConfig)
+            await db.connect()
+        } else {
+            unimplementedError()
+        }
+    } else if (chosenRootOption == RootPromptOption.Exit) {
+        if (isConnected()) {
+            db?.disconnect()
+        }
+        
+        Deno.exit(0)
+    } else {
+        unimplementedError()
+    }
 }
